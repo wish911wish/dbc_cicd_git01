@@ -1,0 +1,30 @@
+name: Sync Git Folder
+
+concurrency: prod_environment
+
+on:
+  push:
+    branches:
+      # Set your base branch name here
+      - master
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: 'Update git folder'
+    environment: Prod
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: databricks/setup-cli@main
+      - name: Update git folder
+        # Set your workspace path and branch name here
+        run: databricks repos update /Workspace/dbc_cicd_git01_prod --branch master
