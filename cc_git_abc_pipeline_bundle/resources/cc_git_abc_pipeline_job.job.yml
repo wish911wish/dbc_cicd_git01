@@ -40,7 +40,20 @@ resources:
         - task_key: refresh_pipeline
           pipeline_task:
             pipeline_id: ${resources.pipelines.cc_git_abc_pipeline_bundle_etl.id}
-
+            email_notifications:
+              on_start:
+                - wish911wish@gmail.com
+              on_success:
+                - wish911wish@gmail.com
+              on_failure:
+                - wish911wish@gmail.com
+            webhook_notifications:
+              on_start:
+                - id: 26b755f6-b94c-414e-a0ee-d9f843c92f4f
+              on_success:
+                - id: 26b755f6-b94c-414e-a0ee-d9f843c92f4f
+              on_failure:
+                - id: 26b755f6-b94c-414e-a0ee-d9f843c92f4f
       environments:
         - environment_key: default
           spec:
