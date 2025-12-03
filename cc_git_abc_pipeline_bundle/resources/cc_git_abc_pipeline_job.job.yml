@@ -1,5 +1,3 @@
-# A sample job for cc_git_abc_pipeline_bundle.
-
 resources:
   jobs:
     cc_git_abc_pipeline_job:
@@ -21,14 +19,9 @@ resources:
           - id: 26b755f6-b94c-414e-a0ee-d9f843c92f4f
 
       trigger:
-        # Run this job every day, exactly one day from the last run; see https://docs.databricks.com/api/workspace/jobs/create#trigger
         periodic:
           interval: 1
           unit: DAYS
-
-      #email_notifications:
-      #  on_failure:
-      #    - your_email@example.com
 
       parameters:
         - name: catalog
