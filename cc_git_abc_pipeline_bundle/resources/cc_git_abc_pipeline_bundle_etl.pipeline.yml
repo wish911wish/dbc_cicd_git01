@@ -1,5 +1,3 @@
-# The main pipeline for cc_git_abc_pipeline_bundle
-
 resources:
   pipelines:
     cc_git_abc_pipeline_bundle_etl:
@@ -15,6 +13,4 @@ resources:
 
       environment:
         dependencies:
-          # We include every dependency defined by pyproject.toml by defining an editable environment
-          # that points to the folder where pyproject.toml is deployed.
           - --editable ${workspace.file_path}
