@@ -1,17 +1,13 @@
 name: deployment
-
 concurrency: dev_environment
-
 on:
   push:
     branches:
-      - master
-
+      - develop
 jobs:
   deploy:
     name: 'Deploy bundle'
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v3
       - uses: databricks/setup-cli@main
@@ -22,17 +18,14 @@ jobs:
           DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           DATABRICKS_BUNDLE_ENV: dev
-
   pipeline_update:
     name: 'Run pipeline update'
     runs-on: ubuntu-latest
     needs:
       - deploy
-
     steps:
       - uses: actions/checkout@v3
       - uses: databricks/setup-cli@main
-
       - run: databricks bundle run cc_git_abc_pipeline_bundle_etl --refresh-all
         working-directory: ./cc_git_abc_pipeline_bundle
         env:
