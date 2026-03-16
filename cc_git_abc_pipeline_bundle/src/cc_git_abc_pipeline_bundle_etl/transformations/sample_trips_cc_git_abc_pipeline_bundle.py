@@ -14,3 +14,7 @@ def sample_trips_cc_git_abc_pipeline_bundle():
 @dp.table
 def sample_trips_cc_git_abc_pipeline_bundle_01():
     return spark.read.table("samples.nyctaxi.trips")
+
+@dp.table
+def sample_trips_cc_git_abc_pipeline_bundle_02():
+    return spark.read.table("samples.nyctaxi.trips")
