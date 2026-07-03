@@ -1,3 +1,13 @@
+# common/type_cast.py
+CAST_PREFIX = "_cast_"                        # 型変換結果カラムのプレフィックス
+CAST_FAILED_COLUMNS = "_cast_failed_columns"  # 変換失敗カラム名の連結
+CAST_PASSED = "_cast_passed"                  # 全カラム変換成功なら True
+
+# common/expectations.py
+EXPECT_FAILED_RULES = "_expect_failed_rules"  # 違反ルール名の連結
+EXPECT_PASSED = "_expect_passed"              # 違反ルールなしなら True
+
+
 # common/expectations.py
 """
 名前付きの Expectations 条件を行ごとに評価する汎用ユーティリティ。
