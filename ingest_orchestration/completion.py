@@ -14,6 +14,7 @@ def record_bronze_completion(
     control_table: str,
     *,
     job_name: str,
+    table_name: str,
     batch_date: str,            # 業務日 'YYYY-MM-DD'
     status: str,                # 'success' | 'failed'
     row_count: int | None = None,
@@ -31,6 +32,7 @@ def record_bronze_completion(
             (
                 bd,
                 job_name,
+                table_name,
                 status,
                 row_count,
                 source_version,
@@ -39,7 +41,7 @@ def record_bronze_completion(
             )
         ],
         schema=(
-            "batch_date date, job_name string, status string, "
+            "batch_date date, job_name string, table_name string, status string, "
             "row_count long, source_version long, run_id string, "
             "completed_at timestamp"
         ),
@@ -49,7 +51,7 @@ def record_bronze_completion(
         f"""
         MERGE INTO {control_table} AS t
         USING _bronze_completion_src AS s
-          ON t.batch_date = s.batch_date AND t.job_name = s.job_name
+          ON t.batch_date = s.batch_date AND t.job_name = s.job_name AND t.table_name = s.table_name
         WHEN MATCHED THEN UPDATE SET *
         WHEN NOT MATCHED THEN INSERT *
         """
@@ -64,12 +66,12 @@ def record_bronze_completion(
 #   try:
 #       n = run_bronze_ingestion(...)              # 実際の取り込み処理
 #       record_bronze_completion(
-#           spark, CTL, job_name="bronze_orders", batch_date=batch_date,
+#           spark, CTL, job_name="bronze_orders", table_name="orders", batch_date=batch_date,
 #           status="success", row_count=n, run_id=run_id,
 #       )
 #   except Exception:
 #       record_bronze_completion(
-#           spark, CTL, job_name="bronze_orders", batch_date=batch_date,
+#           spark, CTL, job_name="bronze_orders", table_name="orders", batch_date=batch_date,
 #           status="failed", run_id=run_id,
 #       )
 #       raise
