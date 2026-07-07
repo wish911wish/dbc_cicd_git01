@@ -3,7 +3,7 @@
 
 -- 1) Bronze取り込み完了実績（table_update トリガーの監視対象テーブル）
 CREATE TABLE IF NOT EXISTS ${catalog}.${ops_schema}.bronze_ingestion_control (
-  batch_date      DATE      NOT NULL,   -- 業務日（壁時計でなく論理日で突合する）
+  batch_date      DATE      NOT NULL,   -- 業務日（取り込み対象のデータの基準日。00:00を跨いでも変わらない日付）
   job_name        STRING    NOT NULL,   -- ジョブ名
   table_name      STRING    NOT NULL,   -- 対象テーブル名
   status          STRING    NOT NULL,   -- 'success' | 'failed'
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS ${catalog}.${ops_schema}.bronze_ingestion_control (
   source_version  BIGINT,               -- 取り込んだソースのコミットバージョン（任意）
   run_id          STRING,               -- Bronze側 run_id（トレース用）
   completed_at    TIMESTAMP NOT NULL,
-  CONSTRAINT pk_bronze_ingestion_control PRIMARY KEY (batch_date, job_name)
+  CONSTRAINT pk_bronze_ingestion_control PRIMARY KEY (batch_date, job_name, table_name)
 ) USING DELTA;
 
 -- 2) Silver起動実績（冪等性の要）。
