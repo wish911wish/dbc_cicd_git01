@@ -3,7 +3,7 @@
 
 -- 1) Bronze取り込み完了実績（table_update トリガーの監視対象テーブル）
 CREATE TABLE IF NOT EXISTS ${catalog}.${ops_schema}.bronze_ingestion_control (
-  batch_date      DATE      NOT NULL,   -- 業務日（取り込み対象のデータの基準日。00:00を跨いでも変わらない日付）
+  batch_date      DATE      NOT NULL,   -- 業務日（取り込み対象のデータの基準日。00:00を跨いでも変わらない論理的な日付）
   job_name        STRING    NOT NULL,   -- ジョブ名
   table_name      STRING    NOT NULL,   -- 対象テーブル名
   status          STRING    NOT NULL,   -- 'success' | 'failed'
