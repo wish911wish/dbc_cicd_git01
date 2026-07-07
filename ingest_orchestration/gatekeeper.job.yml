@@ -1,0 +1,56 @@
+# Bronze→Silver ゲートキーパー。制御テーブルの更新イベントで起動する。
+resources:
+  jobs:
+    bronze_to_silver_gatekeeper:
+      name: bronze_to_silver_gatekeeper
+
+      # 冪等性の担保: 同時実行を1本に制限し、判定〜起動〜記録の競合を排除する。
+      max_concurrent_runs: 1
+
+      email_notifications:
+        on_failure:
+          - data-oncall@example.com   # SLA違反時はジョブを失敗させここに通知
+
+      # B案: 同一バンドル内のSilverジョブIDを、DAB置換でJSONとして注入する。
+      #   デプロイ時に ${resources.jobs.<key>.id} が採番済みIDに解決され、
+      #   dev/prod それぞれ正しいIDが自動で入る（ハードコード不要）。
+      parameters:
+        - name: silver_job_ids
+          default: '{"silver_sales": ${resources.jobs.silver_sales.id}, "silver_inventory": ${resources.jobs.silver_inventory.id}}'
+
+      # 起動トリガー: 制御テーブルが更新されたら発火（ANY_UPDATED）。
+      # AND判定はゲートキーパー側コードで行うため、条件は「いずれか更新」で十分。
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - ${var.catalog}.${var.ops_schema}.bronze_ingestion_control
+          condition: ANY_UPDATED
+          min_time_between_triggers_seconds: 60
+          wait_after_last_change_seconds: 120
+
+      tasks:
+        - task_key: evaluate_and_trigger
+          spark_python_task:
+            python_file: ../src/gatekeeper/run_gatekeeper.py
+            # spark_python_task はJSON配列パラメータのためジョブパラメータが自動push
+            # されない。{{job.parameters.<name>}} で明示的に参照する。
+            parameters:
+              - "--silver-job-ids"
+              - "{{job.parameters.silver_job_ids}}"
+              - "--catalog"
+              - "${var.catalog}"
+              - "--ops-schema"
+              - "${var.ops_schema}"
+              - "--lookback-days"
+              - "3"
+          environment_key: default
+
+      # サーバーレスで実行（spark_python_task には environment 指定が必要）。
+      environments:
+        - environment_key: default
+          spec:
+            # client のバージョンは現行のサーバーレス対応値に合わせること。
+            client: "3"
+            dependencies:
+              - databricks-sdk

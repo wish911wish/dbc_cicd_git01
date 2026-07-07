@@ -1,0 +1,44 @@
+# 実際のSilverジョブ（ここでは雛形）。
+# ${resources.jobs.<key>.id} でゲートキーパーから参照するため、同一バンドル内に
+# 存在することが前提（B案の成立条件）。リソースキー(silver_sales 等)は
+# dependencies.py の論理名／--silver-job-ids のキーと一致させる。
+resources:
+  jobs:
+    silver_sales:
+      name: silver_sales
+      max_concurrent_runs: 1
+      # ゲートキーパーが run_now で batch_date を上書きできるよう宣言しておく。
+      parameters:
+        - name: batch_date
+          default: ""
+      tasks:
+        - task_key: build_silver_sales
+          spark_python_task:
+            python_file: ../src/silver/build_silver_sales.py
+            parameters:
+              - "--batch-date"
+              - "{{job.parameters.batch_date}}"
+          environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            client: "3"
+
+    silver_inventory:
+      name: silver_inventory
+      max_concurrent_runs: 1
+      parameters:
+        - name: batch_date
+          default: ""
+      tasks:
+        - task_key: build_silver_inventory
+          spark_python_task:
+            python_file: ../src/silver/build_silver_inventory.py
+            parameters:
+              - "--batch-date"
+              - "{{job.parameters.batch_date}}"
+          environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            client: "3"
