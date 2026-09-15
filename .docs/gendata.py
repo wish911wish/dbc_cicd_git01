@@ -37,6 +37,7 @@ ORA_CHARSET = "AL32UTF8"    # 制御ファイルの CHARACTERSET
 DELIM = ","
 QUOTE = '"'
 NEWLINE = "\n"              # LF。Windowsで生成する場合も明示的にLFで揃える
+HEADER = True               # 1行目に列名を出力する。制御ファイルの SKIP と連動する
 
 
 # --------------------------------------------------------------------------
@@ -258,9 +259,11 @@ def validate(table: Table, seed: str, sample: int = 500) -> list[str]:
                         f"({b}バイト, value={v!r}, row={i})"
                     )
 
-            if DELIM in v or "\n" in v or "\r" in v or QUOTE in v:
+            # 全フィールドを囲むのでカンマは問題にならない。
+            # 改行と囲み文字はダイレクトパスでの扱いが不安定なため、生成段階で排除する。
+            if "\n" in v or "\r" in v or QUOTE in v:
                 errors.append(
-                    f"{table.name}.{col.name}: 区切り文字/改行/囲み文字を含む (value={v!r}, row={i})"
+                    f"{table.name}.{col.name}: 改行/囲み文字を含む (value={v!r}, row={i})"
                 )
 
     return sorted(set(errors))[:20]
@@ -292,7 +295,10 @@ def write_csv(table: Table, outdir: Path, files: int, seed: str, rows: int) -> l
 
         with path.open("w", encoding=ENCODING, newline="") as f:
             w = csv.writer(f, delimiter=DELIM, quotechar=QUOTE,
-                           quoting=csv.QUOTE_MINIMAL, lineterminator=NEWLINE)
+                           quoting=csv.QUOTE_ALL, lineterminator=NEWLINE)
+            if HEADER:
+                # 分割時は各ファイルの先頭に出す（制御ファイル側の SKIP はファイル単位で効く）
+                w.writerow([c.name for c in table.columns])
             ctx = Ctx(rng=rng, row=0)
             for i in range(n):
                 ctx.row = offset + i
@@ -312,7 +318,8 @@ def render_ctl(table: Table, csv_name: str) -> str:
     width = max(len(c.name) for c in table.columns)
     cols = ",\n".join(f"  {c.name.ljust(width)} {c.ctl_type}" for c in table.columns)
     stem = Path(csv_name).stem
-    return f"""OPTIONS (DIRECT=TRUE, ERRORS=100)
+    opts = f"SKIP={1 if HEADER else 0}, DIRECT=TRUE, ERRORS=100"
+    return f"""OPTIONS ({opts})
 LOAD DATA
 CHARACTERSET {ORA_CHARSET}
 INFILE '{csv_name}'
