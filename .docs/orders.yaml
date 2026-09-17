@@ -1,0 +1,171 @@
+version: 1
+
+# ==========================================================================
+# CSV / 制御ファイルの書式。両方ここから生成されるので齟齬が起きない。
+# ==========================================================================
+format:
+  encoding: utf-8
+  oracle_charset: AL32UTF8
+  date_format: "YYYY-MM-DD HH24:MI:SS"   # Oracle書式。strftime書式は自動導出
+  delimiter: ","
+  quote: '"'
+  quote_all: true      # 全フィールドをダブルクォートで囲む
+  header: true         # ヘッダー行を出力し、制御ファイルに SKIP=1 を入れる
+  direct: true         # OPTIONS の DIRECT=TRUE
+  errors: 100
+
+# ==========================================================================
+# 表スペック
+#   rows      : 本番件数（--rows-scale で縮小できる）
+#   scalable  : false にすると縮小対象外。マスタ表はこちら
+#   columns[].ctl       : 制御ファイルに書く型指定
+#   columns[].max_bytes : VARCHAR2(n BYTE) の n。生成時に桁溢れを検出する
+#   columns[].null_rate : NULLになる割合
+# ==========================================================================
+tables:
+
+  # ------------------------------------------------------------------
+  # 親表
+  # CREATE TABLE ORDERS (
+  #   ORDER_ID     NUMBER(12)   NOT NULL,
+  #   CUSTOMER_CD  VARCHAR2(10) NOT NULL,
+  #   ORDER_DT     DATE         NOT NULL,
+  #   STATUS_CD    CHAR(2)      NOT NULL,
+  #   TOTAL_AMOUNT NUMBER(14,2) NOT NULL,
+  #   CAMPAIGN_ID  NUMBER(8),
+  #   REMARKS      VARCHAR2(200)
+  # )
+  # ------------------------------------------------------------------
+  ORDERS:
+    rows: 10000000
+    columns:
+      - name: ORDER_ID
+        ctl: INTEGER EXTERNAL
+        nullable: false
+        gen: {type: seq, start: 1}
+
+      - name: CUSTOMER_CD
+        ctl: CHAR(10)
+        nullable: false
+        max_bytes: 10
+        # alpha を上げると一部の顧客に受注が集中する（結合スキューの再現）
+        gen: {type: code_pool, prefix: "C", count: 50000, digits: 9, alpha: 1.5}
+
+      - name: ORDER_DT
+        ctl: DATE "YYYY-MM-DD HH24:MI:SS"
+        nullable: false
+        gen: {type: date, from: "2023-01-01", to: "2026-09-30", recent_bias: 0.8}
+
+      - name: STATUS_CD
+        ctl: CHAR(2)
+        nullable: false
+        max_bytes: 2
+        gen:
+          type: weighted
+          values: {"01": 5, "02": 10, "03": 75, "09": 10}
+
+      - name: TOTAL_AMOUNT
+        ctl: DECIMAL EXTERNAL
+        nullable: false
+        gen: {type: decimal, min: 100, max: 9999999, scale: 2}
+
+      # LEFT JOIN パターン(a): FK列自体をNULLにする。FK制約と両立する。
+      - name: CAMPAIGN_ID
+        ctl: INTEGER EXTERNAL
+        null_rate: 0.80
+        gen: {type: fk, table: CAMPAIGNS}
+
+      - name: REMARKS
+        ctl: CHAR(200)
+        max_bytes: 200
+        null_rate: 0.85
+        gen: {type: jp_text, max_bytes: 200}
+
+  # ------------------------------------------------------------------
+  # INNER JOIN 対象の子表（N:1、不一致ゼロ）
+  # ------------------------------------------------------------------
+  ORDER_DETAILS:
+    rows: 40000000        # ORDERS x 平均4明細。結合後の行数を決めるのはここ
+    columns:
+      - name: DETAIL_ID
+        ctl: INTEGER EXTERNAL
+        nullable: false
+        gen: {type: seq, start: 1}
+
+      - name: ORDER_ID
+        ctl: INTEGER EXTERNAL
+        nullable: false
+        # match_rate 省略 = 1.0。INNER JOIN 対象なので不一致を作らない
+        gen: {type: fk, table: ORDERS, mode: n_to_1}
+
+      - name: LINE_NO
+        ctl: INTEGER EXTERNAL
+        nullable: false
+        gen: {type: int, min: 1, max: 4}
+
+      - name: ITEM_CD
+        ctl: CHAR(16)
+        nullable: false
+        max_bytes: 16
+        gen: {type: code_pool, prefix: "ITM", count: 20000, digits: 8, alpha: 2.0}
+
+      - name: QTY
+        ctl: DECIMAL EXTERNAL
+        nullable: false
+        gen: {type: decimal, min: 1, max: 500, scale: 3}
+
+      - name: UNIT_PRICE
+        ctl: DECIMAL EXTERNAL
+        nullable: false
+        gen: {type: decimal, min: 10, max: 500000, scale: 2}
+
+  # ------------------------------------------------------------------
+  # マスタ表。縮小すると結合の選択率が変わるので scalable: false
+  # ------------------------------------------------------------------
+  CAMPAIGNS:
+    rows: 500
+    scalable: false
+    columns:
+      - name: CAMPAIGN_ID
+        ctl: INTEGER EXTERNAL
+        nullable: false
+        gen: {type: seq, start: 1}
+
+      - name: CAMPAIGN_NM
+        ctl: CHAR(60)
+        nullable: false
+        max_bytes: 60
+        gen: {type: jp_text, min_words: 3, max_words: 8, max_bytes: 60}
+
+      - name: DISCOUNT_RT
+        ctl: DECIMAL EXTERNAL
+        nullable: false
+        gen: {type: decimal, min: 0, max: 50, scale: 2}
+
+  # ------------------------------------------------------------------
+  # LEFT JOIN 対象のオプショナルな子表（1:0..1）
+  # rows / 親のrows が自動で比率になる。3% の受注にだけ返品がある。
+  # ------------------------------------------------------------------
+  RETURNS:
+    rows: 300000
+    columns:
+      - name: RETURN_ID
+        ctl: INTEGER EXTERNAL
+        nullable: false
+        gen: {type: seq, start: 1}
+
+      # LEFT JOIN パターン(b): 親のPKから重複なしで抜く
+      - name: ORDER_ID
+        ctl: INTEGER EXTERNAL
+        nullable: false
+        gen: {type: fk, table: ORDERS, mode: subset}
+
+      - name: RETURN_DT
+        ctl: DATE "YYYY-MM-DD HH24:MI:SS"
+        nullable: false
+        gen: {type: date, from: "2023-01-01", to: "2026-09-30", recent_bias: 0.8}
+
+      - name: RETURN_AMT
+        ctl: DECIMAL EXTERNAL
+        nullable: false
+        gen: {type: decimal, min: 100, max: 999999, scale: 2}
