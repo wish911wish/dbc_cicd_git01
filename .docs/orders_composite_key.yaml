@@ -1,0 +1,178 @@
+version: 1
+
+# ==========================================================================
+# 複合主キーを持つ表のスペック例
+#
+# 複合PKは「各列が一意」ではなく「組み合わせが一意」なので、列ごとに
+# ランダム生成すると必ず重複する。key_part / date_part は行番号を
+# 混合基数で分解して、組み合わせの一意性を構造的に保証する。
+#
+#   値 = (row // period) % count
+#
+#   period : この列の値が1つ進むまでに消費する行数
+#   count  : この列が取りうる値の個数
+#
+# 一番下の桁から period=1 で積み上げ、上の桁の period は
+# 「下位桁の count の積」にする。表の rows は count の総積に一致させる。
+# ==========================================================================
+
+format:
+  encoding: utf-8
+  oracle_charset: AL32UTF8
+  date_format: "YYYY-MM-DD HH24:MI:SS"
+  quote_all: true
+  header: true
+  direct: true
+
+tables:
+
+  # ------------------------------------------------------------------
+  # 親表（単一PK）
+  # ------------------------------------------------------------------
+  ORDERS:
+    rows: 10000000
+    primary_key: [ORDER_ID]
+    columns:
+      - name: ORDER_ID
+        ctl: INTEGER EXTERNAL
+        nullable: false
+        gen: {type: seq, start: 1}
+      - name: CUSTOMER_CD
+        ctl: CHAR(10)
+        nullable: false
+        max_bytes: 10
+        gen: {type: code_pool, prefix: "C", count: 50000, digits: 9, alpha: 1.5}
+      - name: ORDER_DT
+        ctl: DATE "YYYY-MM-DD HH24:MI:SS"
+        nullable: false
+        gen: {type: date, from: "2023-01-01", to: "2026-09-30", recent_bias: 0.8}
+
+  # ------------------------------------------------------------------
+  # 例1: 2列の複合PK（親FK + 行番号）— 最も一般的な形
+  #
+  # CREATE TABLE ORDER_DETAILS (
+  #   ORDER_ID   NUMBER(12)   NOT NULL,
+  #   LINE_NO    NUMBER(4)    NOT NULL,
+  #   ITEM_CD    VARCHAR2(16) NOT NULL,
+  #   QTY        NUMBER(9,3)  NOT NULL,
+  #   CONSTRAINT PK_ORDER_DETAILS PRIMARY KEY (ORDER_ID, LINE_NO)
+  # )
+  #
+  # 分解: rows = 10,000,000(受注) x 4(明細)
+  #   LINE_NO  period=1, count=4        -> 1,2,3,4,1,2,3,4,...
+  #   ORDER_ID period=4, table=ORDERS   -> 1,1,1,1,2,2,2,2,...
+  # ORDER_ID が親を必ず参照するので、INNER JOIN の match_rate=1.0 も同時に満たす。
+  # ------------------------------------------------------------------
+  ORDER_DETAILS:
+    rows: 40000000
+    primary_key: [ORDER_ID, LINE_NO]
+    columns:
+      - name: ORDER_ID
+        ctl: INTEGER EXTERNAL
+        nullable: false
+        gen: {type: key_part, period: 4, table: ORDERS}
+
+      - name: LINE_NO
+        ctl: INTEGER EXTERNAL
+        nullable: false
+        gen: {type: key_part, period: 1, count: 4, start: 1}
+
+      # PK以外の列は従来どおりランダムでよい
+      - name: ITEM_CD
+        ctl: CHAR(16)
+        nullable: false
+        max_bytes: 16
+        gen: {type: code_pool, prefix: "ITM", count: 20000, digits: 8, alpha: 2.0}
+
+      - name: QTY
+        ctl: DECIMAL EXTERNAL
+        nullable: false
+        gen: {type: decimal, min: 1, max: 500, scale: 3}
+
+  # ------------------------------------------------------------------
+  # 例2: 3列の複合PK（日付 + 拠点 + 品目）— 日次スナップショット型
+  #
+  # CREATE TABLE DAILY_STOCK (
+  #   STOCK_DT      DATE         NOT NULL,
+  #   WAREHOUSE_CD  VARCHAR2(6)  NOT NULL,
+  #   ITEM_CD       VARCHAR2(16) NOT NULL,
+  #   QTY           NUMBER(12,3) NOT NULL,
+  #   CONSTRAINT PK_DAILY_STOCK PRIMARY KEY (STOCK_DT, WAREHOUSE_CD, ITEM_CD)
+  # )
+  #
+  # 分解: rows = 365 x 20 x 5000 = 36,500,000
+  #   ITEM_CD      period = 1                -> 最下位。1行ごとに進む
+  #   WAREHOUSE_CD period = 5000             -> 品目を一巡したら進む
+  #   STOCK_DT     period = 20 x 5000 = 100000
+  #
+  # 日付がパーティションキーなら、この分解は各パーティションに均等に
+  # 行が入る形になる。偏らせたい場合は rows を減らして日数を変える。
+  # ------------------------------------------------------------------
+  DAILY_STOCK:
+    rows: 36500000
+    primary_key: [STOCK_DT, WAREHOUSE_CD, ITEM_CD]
+    columns:
+      - name: STOCK_DT
+        ctl: DATE "YYYY-MM-DD HH24:MI:SS"
+        nullable: false
+        gen: {type: date_part, from: "2025-10-01", period: 100000, count: 365, unit: day}
+
+      - name: WAREHOUSE_CD
+        ctl: CHAR(6)
+        nullable: false
+        max_bytes: 6
+        gen: {type: key_part, period: 5000, count: 20, prefix: "WH", digits: 4}
+
+      - name: ITEM_CD
+        ctl: CHAR(16)
+        nullable: false
+        max_bytes: 16
+        gen: {type: key_part, period: 1, count: 5000, prefix: "ITM", digits: 8}
+
+      - name: QTY
+        ctl: DECIMAL EXTERNAL
+        nullable: false
+        gen: {type: decimal, min: 0, max: 99999, scale: 3}
+
+  # ------------------------------------------------------------------
+  # 例3: 複合PKを複合FKで参照する 1:1 の子表
+  #
+  # CREATE TABLE DETAIL_TAX (
+  #   ORDER_ID NUMBER(12)   NOT NULL,
+  #   LINE_NO  NUMBER(4)    NOT NULL,
+  #   TAX_CD   VARCHAR2(4)  NOT NULL,
+  #   TAX_AMT  NUMBER(12,2) NOT NULL,
+  #   CONSTRAINT PK_DETAIL_TAX PRIMARY KEY (ORDER_ID, LINE_NO),
+  #   CONSTRAINT FK_DETAIL_TAX FOREIGN KEY (ORDER_ID, LINE_NO)
+  #     REFERENCES ORDER_DETAILS (ORDER_ID, LINE_NO)
+  # )
+  #
+  # 親と同じ分解（同じ period / count）を書けば、同じ組み合わせが
+  # 同じ順序で再現される。複合FKの整合が自動的に取れる。
+  # ------------------------------------------------------------------
+  DETAIL_TAX:
+    rows: 40000000
+    primary_key: [ORDER_ID, LINE_NO]
+    columns:
+      - name: ORDER_ID
+        ctl: INTEGER EXTERNAL
+        nullable: false
+        gen: {type: key_part, period: 4, table: ORDERS}
+
+      - name: LINE_NO
+        ctl: INTEGER EXTERNAL
+        nullable: false
+        gen: {type: key_part, period: 1, count: 4, start: 1}
+
+      - name: TAX_CD
+        ctl: CHAR(4)
+        nullable: false
+        max_bytes: 4
+        gen:
+          type: weighted
+          values: {"S10": 80, "R08": 18, "N00": 2}
+
+      - name: TAX_AMT
+        ctl: DECIMAL EXTERNAL
+        nullable: false
+        gen: {type: decimal, min: 0, max: 999999, scale: 2}
