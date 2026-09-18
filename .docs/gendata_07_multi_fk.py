@@ -1,3 +1,16 @@
+# 使い方
+# SHIPMENT_LINES:
+#   rows: 12000
+#   columns:
+#     - {name: ORDER_ID, ctl: INTEGER EXTERNAL, nullable: false,
+#        gen: {type: fk_multi, table: ORDER_DETAILS, column: ORDER_ID}}
+#     - {name: LINE_NO,  ctl: INTEGER EXTERNAL, nullable: false,
+#        gen: {type: fk_multi, table: ORDER_DETAILS, column: LINE_NO}}
+#     - {name: SHIP_QTY, ctl: DECIMAL EXTERNAL, nullable: false,
+#        gen: {type: decimal, min: 1, max: 100, scale: 3}}
+
+
+
 """
 SQL*Loader 性能テスト用データ生成エンジン
 
